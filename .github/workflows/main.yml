@@ -4,7 +4,13 @@ on:
   push:
     branches:
       - main
-  # Exercise: Try adding a trigger for pull requests!
+  pull_request:
+    branches:
+      - main
+
+env:
+  NODE_ENV: 'test'
+  LOG_LEVEL: 'debug'
 
 jobs:
   test:
@@ -29,5 +35,42 @@ jobs:
         run: |
           echo "Tests completed with status: ${{ job.status }}"
 
-  # Exercise: Add a new job to lint the app here!
-  # Hint: You can use the same runner as the test job
+  lint:
+    needs: test
+    runs-on: ubuntu-latest
+    if: |
+      contains(github.event.head_commit.modified, 'src/') ||
+      contains(github.event.head_commit.modified, 'tests/') ||
+      contains(github.event.pull_request.changed_files, 'src/') ||
+      contains(github.event.pull_request.changed_files, 'tests/')
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Linting
+        run: npm run lint
+
+      - name: Create PR Comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const output = `#### Linting Results
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*
+            
+            *Linting completed with status: ${{ job.status }}*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
